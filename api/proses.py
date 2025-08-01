@@ -230,3 +230,6 @@ def proses():
     wb.save(output_path)
 
     return send_file(output_path, as_attachment=True, download_name="hasil_slik.xlsx")
+
+from vercel_lambda_flask import VercelLambdaFlask
+handler = VercelLambdaFlask(app)

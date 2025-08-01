@@ -391,4 +391,4 @@ footer {text-align:center; margin-top:10px; color:gray; font-size:13px}
 
     gr.HTML("<footer>© 2025 - Sistem Proses Data Debitur | Dibuat dengan oleh Ayu Nurhasanah</footer>")
 
-demo.launch()
+demo.launch(server_name="0.0.0.0", server_port=5000, share=True)

@@ -357,44 +357,6 @@ def proses_files_gradio(files):
     # Kembalikan DataFrame & path file untuk diunduh
     return df, output_file
 
-# ui gradio
-
-# button clear data
-def clear_data():
-    return None, None, pd.DataFrame()
-
-with gr.Blocks(theme=gr.themes.Soft(), css="""
-#preview-table { overflow-x: auto; }
-#preview-table table { font-size: 12px !important; white-space: nowrap !important; width: 100%; }
-#preview-table thead th { background: #0074D9 !important; color: white !important; text-align: center !important; padding: 6px !important; }
-footer {text-align:center; margin-top:10px; color:gray; font-size:13px}
-""") as demo:
-
-    gr.Markdown("<h1 style='text-align:center'>📄 Sistem Proses Data Debitur</h1>")
-    gr.Markdown(
-        "Unggah beberapa file <code>.txt</code>, kemudian klik <b>Proses</b>, lalu unduh file Excel hasil pengolahan. "
-    )
-
-    # row untuk upload dan download
-    with gr.Row():
-        with gr.Column(scale=1):
-            inp_files = gr.File(label="📤 Upload file .txt", file_count="multiple", file_types=[".txt"])
-            note = gr.Markdown("Tip: Jika tidak ada output, pastikan file berekstensi <code>.txt</code>.")
-            btn = gr.Button("🚀 Proses", variant="primary")
-        with gr.Column(scale=1):
-            out_file = gr.File(label="⬇️ Unduh File Excel", file_types=[".xlsx"])
-            note = gr.Markdown("Note: Klik ukuran file disebelah kanan nama file untuk mengunduh.")
-            clear_btn = gr.Button("🗑️ Clear Data", variant="secondary")
-
-    # Preview tabel
-    out_df = gr.Dataframe(label="Preview Hasil Proses Data Debitur", elem_id="preview-table", wrap=False)
-
-    btn.click(fn=proses_files_gradio, inputs=[inp_files], outputs=[out_df, out_file])
-    clear_btn.click(fn=clear_data, outputs=[inp_files, out_file, out_df])
-
-    gr.HTML("<footer>© 2025 - Sistem Proses Data Debitur | Dibuat dengan oleh Ayu Nurhasanah</footer>")
-
-demo.launch(server_name="0.0.0.0", server_port=5000, share=True)
 
 app = Flask(__name__)
 

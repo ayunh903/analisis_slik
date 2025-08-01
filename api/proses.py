@@ -94,6 +94,10 @@ def bersihkan_nama_fasilitas(nama):
     nama = nama.strip().replace("PT ", "").replace("PT.", "")
     return replacement_nama_fasilitas.get(nama, nama)
 
+def gabungkan_fasilitas_dengan_jumlah(fasilitas_list):
+    counter = Counter(fasilitas_list)
+    return '; '.join([f"{nama} ({jumlah})" if jumlah > 1 else nama for nama, jumlah in counter.items()])
+
 @app.route("/api/proses", methods=["POST"])
 def proses():
     files = request.files.getlist("files")
@@ -107,21 +111,72 @@ def proses():
             continue
 
         fasilitas = data.get('individual', {}).get('fasilitas', {}).get('kreditPembiayan', [])
-        nama_debitur = data.get('individual', {}).get('dataPokokDebitur', [{}])[0].get('namaDebitur', '')
+        data_pokok = data.get('individual', {}).get('dataPokokDebitur', [])
+        nama_debitur = ', '.join(set(d.get('namaDebitur', '') for d in data_pokok if d.get('namaDebitur')))
+
+        total_plafon = 0
+        total_baki_debet = 0
+        jumlah_fasilitas_aktif = 0
+        kol_1_list, kol_25_list, wo_list, lovi_list = [], [], [], []
+        baki_debet_kol25wo = 0
+
+        for item in fasilitas:
+            kondisi_ket = (item.get('kondisiKet') or '').lower()
+            nama_fasilitas = item.get('ljkKet') or ''
+            nama_fasilitas_bersih = bersihkan_nama_fasilitas(nama_fasilitas)
+
+            jumlah_hari_tunggakan = int(item.get('jumlahHariTunggakan', 0))
+            kualitas = item.get('kualitas', '')
+            kol_value = f"{kualitas}/{jumlah_hari_tunggakan}" if jumlah_hari_tunggakan != 0 else kualitas
+            tanggal_kondisi = item.get('tanggalKondisi', '')
+            baki_debet = int(item.get('bakiDebet', 0))
+
+            if kondisi_ket in ['dihapusbukukan', 'hapus tagih', 'fasilitas aktif'] and baki_debet == 0:
+                baki_debet = sum([
+                    int(item.get('tunggakanPokok', 0)),
+                    int(item.get('tunggakanBunga', 0)),
+                    int(item.get('denda', 0))
+                ])
+                if baki_debet == 0:
+                    kondisi_ket = 'lunas'
+
+            plafon_awal = int(item.get('plafonAwal', 0))
+            baki_debet_format = "{:,.0f}".format(baki_debet).replace(",", ".")
+
+            if kondisi_ket == 'fasilitas aktif' and kualitas == '1' and jumlah_hari_tunggakan <= 30:
+                kol_1_list.append(nama_fasilitas_bersih)
+            elif kondisi_ket == 'fasilitas aktif':
+                kol_25_list.append(f"{nama_fasilitas_bersih} Kol {kol_value} {baki_debet_format}")
+                baki_debet_kol25wo += baki_debet
+            elif kondisi_ket in ['dihapusbukukan', 'hapus tagih']:
+                try:
+                    tahun_wo = int(str(tanggal_kondisi)[:4])
+                except:
+                    tahun_wo = ""
+                wo_list.append(f"{nama_fasilitas_bersih} WO {tahun_wo} {baki_debet_format}")
+                baki_debet_kol25wo += baki_debet
+
+            if kondisi_ket == 'fasilitas aktif':
+                total_plafon += plafon_awal
+                total_baki_debet += baki_debet
+                jumlah_fasilitas_aktif += 1
+
+        rekomendasi = "OK" if not kol_25_list and not wo_list and not lovi_list else "NOT OK"
+
         filename = file.filename or "file.txt"
         nik = os.path.splitext(filename)[0].replace("NIK_", "")
 
-        total_baki = sum(int(f.get('bakiDebet', 0)) for f in fasilitas)
-        jumlah_fasilitas = len(fasilitas)
-        nama_fasilitas = [bersihkan_nama_fasilitas(f.get('ljkKet', '')) for f in fasilitas]
-        fasilitas_joined = "; ".join(nama_fasilitas)
-
         hasil_semua.append({
-            "NIK": "'" + nik,
-            "Nama Debitur": nama_debitur,
-            "Jumlah Fasilitas": jumlah_fasilitas,
-            "Total Baki Debet": total_baki,
-            "Daftar Fasilitas": fasilitas_joined
+            'NIK': "'" + nik,
+            'Nama Debitur': nama_debitur,
+            'Rekomendasi': rekomendasi,
+            'Jumlah Fasilitas': jumlah_fasilitas_aktif,
+            'Total Plafon Awal': total_plafon,
+            'Total Baki Debet': total_baki_debet,
+            'Kol 1': gabungkan_fasilitas_dengan_jumlah(kol_1_list),
+            'Kol 2-5': '; '.join(kol_25_list),
+            'WO/dihapusbukukan': '; '.join(wo_list),
+            'LOVI': '; '.join([l.get('keterangan', '') for l in lovi_list])
         })
 
     if not hasil_semua:
@@ -136,14 +191,41 @@ def proses():
 
     wb = openpyxl.load_workbook(output_path)
     ws = wb.active
-    thin_border = Border(left=Side(style='thin'), right=Side(style='thin'),
-                         top=Side(style='thin'), bottom=Side(style='thin'))
+    header = [cell.value for cell in ws[1]]
 
-    for row in ws.iter_rows():
-        for cell in row:
+    wrap_columns = {'Kol 1', 'Kol 2-5', 'WO/dihapusbukukan', 'LOVI'}
+    center_columns = {'NIK', 'Rekomendasi', 'Jumlah Fasilitas', 'Kol 1', 'Kol 2-5', 'WO/dihapusbukukan', 'LOVI'}
+    number_format_columns = {'Total Plafon Awal', 'Total Baki Debet'}
+
+    thin_border = Border(
+        left=Side(style='thin'),
+        right=Side(style='thin'),
+        top=Side(style='thin'),
+        bottom=Side(style='thin')
+    )
+
+    for idx, col_cells in enumerate(ws.columns, start=1):
+        col_letter = get_column_letter(idx)
+        col_name = header[idx - 1] if idx - 1 < len(header) else ''
+
+        wrap = col_name in wrap_columns
+        center = col_name in center_columns
+
+        if center and wrap:
+            alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+        elif center:
+            alignment = Alignment(horizontal='center', vertical='center')
+        elif wrap:
+            alignment = Alignment(wrap_text=True)
+        else:
+            alignment = Alignment()
+
+        for i, cell in enumerate(col_cells):
+            cell.alignment = alignment
+            cell.font = Font(size=8)
             cell.border = thin_border
-            cell.font = Font(size=9)
-            cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+            if i != 0 and col_name in number_format_columns:
+                cell.number_format = '#,##0'
 
     wb.save(output_path)
 

@@ -1,9 +1,12 @@
-import gradio as gr
+# File: api/proses.py
+import json, os, tempfile
 import pandas as pd
-import json, os
+from flask import Flask, request, send_file, jsonify
 from datetime import datetime
 from collections import Counter
+import openpyxl
 
+# paste juga replacement_nama_fasilitas dan fungsi bersihkan serta semua logika kamu di sini
 # data pengganti nama fasilitas
 replacement_nama_fasilitas = {
     "AEON Credit Services Indonesia": "AEON Credit",
@@ -392,3 +395,15 @@ footer {text-align:center; margin-top:10px; color:gray; font-size:13px}
     gr.HTML("<footer>© 2025 - Sistem Proses Data Debitur | Dibuat dengan oleh Ayu Nurhasanah</footer>")
 
 demo.launch(server_name="0.0.0.0", server_port=5000, share=True)
+
+app = Flask(__name__)
+
+@app.route("/", methods=["POST"])
+def process_files():
+    if 'files' not in request.files:
+        return jsonify({"error": "Tidak ada file yang dikirim"}), 400
+    files = request.files.getlist("files")
+    df, output_path = proses_files_gradio(files)
+    if output_path and os.path.exists(output_path):
+        return send_file(output_path, as_attachment=True)
+    return jsonify({"error": "Gagal membuat file Excel"}), 500

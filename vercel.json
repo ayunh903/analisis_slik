@@ -1,9 +1,0 @@
-{
-  "version": 2,
-  "builds": [
-    { "src": "api/proses.py", "use": "@vercel/python" }
-  ],
-  "routes": [
-    { "src": "/api/proses", "dest": "api/proses.py" }
-  ]
-}
